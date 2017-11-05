@@ -79,22 +79,35 @@ func Serve() error {
 	}
 
 	logrus.Infof("Serving gRPC on %s", service.Port)
-	return CreateServer().Serve(lis)
+	var blankOpts []grpc.ServerOption
+	return CreateServer(blankOpts).Serve(lis)
 }
 
-func CreateServer() *grpc.Server {
-	// Default interceptors, [prometheus, opentracing]
+func ServeWithGrpcServerOptions(grpcServerOptions []grpc.ServerOption) error {
+	lis, err := net.Listen("tcp", service.Port)
+	if err != nil {
+		return err
+	}
+
+	logrus.Infof("Serving gRPC on %s", service.Port)
+	return CreateServer(grpcServerOptions).Serve(lis)
+}
+
+func CreateServer(grpcOtherOptions []grpc.ServerOption) *grpc.Server {
 	AddUnaryInterceptor(grpc_prometheus.UnaryServerInterceptor)
 	AddStreamInterceptor(grpc_prometheus.StreamServerInterceptor)
 	AddUnaryInterceptor(otgrpc.OpenTracingServerInterceptor(
 		fromenv.Tracer(service.Name)))
 
-	gs := grpc.NewServer(
+	grpcOtherOptions = append(grpcOtherOptions,
 		grpc.UnaryInterceptor(
-			grpc_middleware.ChainUnaryServer(service.UnaryInts...)),
+			grpc_middleware.ChainUnaryServer(service.UnaryInts...)))
+
+	grpcOtherOptions = append(grpcOtherOptions,
 		grpc.StreamInterceptor(
-			grpc_middleware.ChainStreamServer(service.StreamInts...)),
-	)
+			grpc_middleware.ChainStreamServer(service.StreamInts...)))
+
+	gs := grpc.NewServer(grpcOtherOptions...)
 
 	service.GRPCImplementation(gs)
 
